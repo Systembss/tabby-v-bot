@@ -277,13 +277,13 @@ textarea.form-input{resize:vertical;min-height:80px;font-family:'Inter',sans-ser
       <div class="sidebar-title">Dashboard</div>
     </div>
 <nav class="sidebar-nav">
-  <div class="nav-item active" onclick="switchPage('analytics',this)"><span class="nav-icon">📊</span>Analytics</div>
-  <div class="nav-item" onclick="switchPage('items',this)"><span class="nav-icon">🏷️</span>Items</div>
-  <div class="nav-item" onclick="switchPage('evals',this)"><span class="nav-icon">👤</span>Eval Stats</div>
-  <div class="nav-item" onclick="switchPage('notes',this)"><span class="nav-icon">📋</span>HQ Notes</div>
-  <div class="nav-item" onclick="switchPage('flags',this)"><span class="nav-icon">🚩</span>Flags</div>
-  <div class="nav-item" onclick="switchPage('appeals',this)"><span class="nav-icon">⚖️</span>Appeals</div>
-  <div class="nav-item" id="access-nav-item" style="display:none" onclick="switchPage('access',this)"><span class="nav-icon">🔐</span>Access</div>
+  <div class="nav-item active" onclick="switchPage('analytics',this)">Analytics</div>
+  <div class="nav-item" onclick="switchPage('items',this)">Values</div>
+  <div class="nav-item" onclick="switchPage('evals',this)">Eval Stats</div>
+  <div class="nav-item" onclick="switchPage('notes',this)">HQ Notes</div>
+  <div class="nav-item" onclick="switchPage('flags',this)">Flags</div>
+  <div class="nav-item" onclick="switchPage('appeals',this)">Appeals</div>
+  <div class="nav-item" id="access-nav-item" style="display:none" onclick="switchPage('access',this)">Access</div>
 </nav>
     <div class="sidebar-footer">
       <div class="user-pill">
@@ -322,15 +322,15 @@ textarea.form-input{resize:vertical;min-height:80px;font-family:'Inter',sans-ser
     <!-- ITEMS -->
     <div class="page" id="page-items">
       <div class="page-header">
-        <div><div class="page-title">Items</div><div class="page-sub" style="margin-top:4px">Value List</div></div>
+        <div><div class="page-title">Values</div><div class="page-sub" style="margin-top:4px">Value List</div></div>
         <div style="display:flex;gap:8px;align-items:center">
           <span id="pending-count" style="font-size:12px;color:var(--muted);display:none"></span>
-          <button class="btn btn-primary" id="save-all-btn" onclick="openSaveModal()" style="display:none">💾 Save All Changes</button>
+          <button class="btn btn-primary" id="save-all-btn" onclick="openSaveModal()" style="display:none">Save All Changes</button>
         </div>
       </div>
       <div class="accent-line"></div>
       <div class="toolbar">
-        <div class="search-box"><input type="text" id="items-search" placeholder="Search items..." oninput="renderItems()"></div>
+        <div class="search-box"><input type="text" id="items-search" placeholder="Search values..." oninput="renderItems()"></div>
         <select class="filter-select" id="items-cat" onchange="renderItems()">
           <option value="">All Categories</option>
           <option value="Stickers">Stickers</option>
@@ -349,7 +349,7 @@ textarea.form-input{resize:vertical;min-height:80px;font-family:'Inter',sans-ser
       <div class="page-header">
         <div><div class="page-title">Eval Stats</div><div class="page-sub" style="margin-top:4px">Evaluator Performance</div></div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-danger" onclick="confirmResetAll()">⚠ Reset All Stats</button>
+          <button class="btn btn-danger" onclick="confirmResetAll()">Reset All Stats</button>
         </div>
       </div>
       <div class="accent-line"></div>
@@ -428,13 +428,13 @@ textarea.form-input{resize:vertical;min-height:80px;font-family:'Inter',sans-ser
   </div>
   <div class="accent-line"></div>
   <div class="card" style="margin-bottom:16px;border-left:3px solid var(--warn)">
-    <div class="card-label">⚠ Owner Notice</div>
+    <div class="card-label">Owner Notice</div>
     <div style="font-size:13px;margin-top:6px;color:var(--muted)">Changes here are stored in <strong style="color:var(--text)">your browser only</strong>. To sync with other owners, use Export and have them Import.</div>
   </div>
   <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-    <button class="btn btn-ghost" onclick="exportAccessList()">📋 Export List</button>
-    <button class="btn btn-ghost" onclick="importAccessList()">📥 Import List</button>
-    <button class="btn btn-ghost" onclick="resetAccessToDefault()">↩ Reset to Default</button>
+    <button class="btn btn-ghost" onclick="exportAccessList()">Export List</button>
+    <button class="btn btn-ghost" onclick="importAccessList()">Import List</button>
+    <button class="btn btn-ghost" onclick="resetAccessToDefault()">Reset to Default</button>
   </div>
   <div class="table-wrap">
     <table>
@@ -593,7 +593,13 @@ async function loadFromAPI() {
 function persist() {}
 
 async function saveHQToBot() {
-  try { await apiPost('/api/hq', hqData); } catch(e) { console.warn('HQ save failed:', e); }
+  try {
+    await apiPost('/api/hq', hqData);
+    showToast('Saved to bot');
+  } catch(e) {
+    showToast('Save failed: ' + e.message);
+    console.error('HQ save error:', e);
+  }
 }
 
 // ═══════════════════════════════════════
@@ -796,9 +802,9 @@ async function saveAllChanges() {
     pendingItemChanges = {};
     updatePendingUI();
     closeModal('save-modal');
-    showToast('✅ Saved to bot' + (sendType!=='none' ? ' & announced!' : '!'));
+    showToast('Saved to bot' + (sendType!=='none' ? ' & announced!' : '!'));
   } catch(e) {
-    showToast('❌ Save failed: ' + e.message);
+    showToast('Save failed: ' + e.message);
   } finally {
     btn.textContent = 'Save to Bot'; btn.disabled = false;
   }
@@ -1170,8 +1176,8 @@ function renderAppeals() {
     const total=b+m+w+k+j;
     const risk=b>=3?'badge-danger':b>=1?'badge-warn':'badge-muted';
     const riskL=b>=3?'High':b>=1?'Medium':'Low';
-    return `<tr>
-      <td class="mono-id">${uid}</td>
+    return `<tr style="cursor:pointer" onclick="viewAppeal('${uid}',${JSON.stringify(acts).replace(/'/g,"&#39;")})">
+      <td class="mono-id" style="color:var(--accent)">${uid}</td>
       <td>${b?`<span class="badge badge-danger">${b}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
       <td>${m?`<span class="badge badge-warn">${m}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
       <td>${w?`<span class="badge badge-info">${w}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
@@ -1186,10 +1192,37 @@ function renderAppeals() {
 
   const totalUsers=Object.keys(appealsData).length;
   document.getElementById('appeal-summary').innerHTML=[
-    {l:'Total Users',v:totalUsers,i:'👥'},
-    {l:'Total Bans',v:tb,i:'🔨'},
-    {l:'Total Mutes',v:tm,i:'🔇'},
-  ].map(s=>`<div class="card"><div class="card-label">${s.i} ${s.l}</div><div class="card-value">${s.v}</div></div>`).join('');
+    {l:'Total Users',v:totalUsers},
+    {l:'Total Bans',v:tb},
+    {l:'Total Mutes',v:tm},
+  ].map(s=>`<div class="card"><div class="card-label">${s.l}</div><div class="card-value">${s.v}</div></div>`).join('');
+}
+
+function viewAppeal(uid, acts) {
+  const labels = {ban:'Ban',mute:'Mute',warn:'Warn',kick:'Kick',jail:'Jail'};
+  const colors = {ban:'badge-danger',mute:'badge-warn',warn:'badge-info',kick:'badge-muted',jail:'badge-muted'};
+  const total = Object.values(acts).reduce((s,v)=>s+v,0);
+  const risk = (acts.ban||0)>=3?'High':(acts.ban||0)>=1?'Medium':'Low';
+  const riskColor = (acts.ban||0)>=3?'var(--danger)':(acts.ban||0)>=1?'var(--warn)':'var(--muted)';
+
+  const breakdown = Object.entries(acts).filter(([,v])=>v>0).map(([k,v])=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:14px;font-weight:600">${labels[k]||k} Appeals</span>
+      <span class="badge ${colors[k]||'badge-muted'}">${v} appeal${v!==1?'s':''}</span>
+    </div>`).join('');
+
+  document.getElementById('appeal-detail-id').textContent = uid;
+  document.getElementById('appeal-detail-body').innerHTML = `
+    <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="card" style="flex:1;min-width:100px"><div class="card-label">Total Appeals</div><div class="card-value">${total}</div></div>
+      <div class="card" style="flex:1;min-width:100px"><div class="card-label">Risk Level</div><div class="card-value" style="color:${riskColor}">${risk}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Appeal Breakdown</div>
+    ${breakdown || '<div style="color:var(--muted);padding:12px 0">No appeal data.</div>'}
+    <div style="margin-top:16px;padding:12px;background:var(--surface2);border-radius:4px;font-size:12px;color:var(--muted)">
+      Full appeal transcripts are stored in your Discord log channel. Search for this user ID there to view the complete conversation.
+    </div>`;
+  openModal('appeal-detail-modal');
 }
 
 // ═══════════════════════════════════════
@@ -1230,6 +1263,16 @@ function escQ(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 function escKey(s){return s.replace(/[^a-zA-Z0-9_]/g,'_');}
 function fmtTs(ts){return new Date(ts*1000).toLocaleString();}
 </script>
+
+<!-- APPEAL DETAIL MODAL -->
+<div class="modal-overlay" id="appeal-detail-modal">
+  <div class="modal" style="max-width:480px">
+    <button class="modal-close" onclick="closeModal('appeal-detail-modal')">✕</button>
+    <div class="modal-title">Appeal History</div>
+    <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:16px" id="appeal-detail-id"></div>
+    <div id="appeal-detail-body"></div>
+  </div>
+</div>
 
 <!-- ADD ACCESS MODAL -->
 <div class="modal-overlay" id="save-modal">
