@@ -916,10 +916,11 @@ function toggleGroup(header) {
 
 function updateFlatItem(cat, name, field, val, el) {
   if (!itemsData[cat]?.[name]) return;
+  const oldVal = itemsData[cat][name][field];
   itemsData[cat][name][field] = val;
   markSaved(el);
-  persist('items');
-  showToast('Saved');
+  trackChange(cat, name, field, oldVal, val);
+  updatePendingUI();
 }
 
 function updateItemField(cat, group, variant, field, val, el) {
