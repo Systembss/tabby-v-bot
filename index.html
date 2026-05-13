@@ -290,6 +290,10 @@ textarea.form-input{resize:vertical;min-height:80px;font-family:'Inter',sans-ser
     <div class="page" id="page-items">
       <div class="page-header">
         <div><div class="page-title">Items</div><div class="page-sub" style="margin-top:4px">Value List</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="pending-count" style="font-size:12px;color:var(--muted);display:none"></span>
+          <button class="btn btn-primary" id="save-all-btn" onclick="openSaveModal()" style="display:none">💾 Save All Changes</button>
+        </div>
       </div>
       <div class="accent-line"></div>
       <div class="toolbar">
@@ -476,7 +480,9 @@ textarea.form-input{resize:vertical;min-height:80px;font-family:'Inter',sans-ser
 // ═══════════════════════════════════════
 const CONFIG = {
   CLIENT_ID: "1495036071686312077",
-  REDIRECT_URI: "https://tabby-v-bot.pages.dev",
+  REDIRECT_URI: "https://systembss.github.io/tabby-v-bot/",
+  API_BASE: "https://tabby-v-bot-bot-production.up.railway.app",
+  API_SECRET: "Jake@1124",
   OWNER_IDS: new Set([
     "1392975116404523159",
     "1208953659858092112",
@@ -524,30 +530,37 @@ let evalData  = JSON.parse(JSON.stringify(EVAL_DATA_RAW));
 let hqData    = JSON.parse(JSON.stringify(HQ_DATA_RAW));
 let appealsData = JSON.parse(JSON.stringify(APPEALS_DATA_RAW));
 let analyticsData = JSON.parse(JSON.stringify(ANALYTICS_DATA_RAW));
+let pendingItemChanges = {}; // tracks unsaved edits per section
 
-// Storage keys for persistence
-const SK = {
-  items: 'hq_items',
-  evals: 'hq_evals',
-  hq: 'hq_notes_flags',
-  token: 'discord_token',
-  oauth: 'oauth_state',
-};
+const SK = { token: 'discord_token', oauth: 'oauth_state' };
 
-function loadFromStorage() {
-  try {
-    const i = localStorage.getItem(SK.items); if (i) itemsData = JSON.parse(i);
-    const e = localStorage.getItem(SK.evals); if (e) evalData  = JSON.parse(e);
-    const h = localStorage.getItem(SK.hq);    if (h) hqData    = JSON.parse(h);
-  } catch(_) {}
+// \u2550\u2550\u2550 API HELPERS \u2550\u2550\u2550
+async function apiGet(path) {
+  const r = await fetch(CONFIG.API_BASE + path, {headers:{'X-API-Key':CONFIG.API_SECRET}});
+  if (!r.ok) throw new Error('API GET ' + path + ' failed: ' + r.status);
+  return r.json();
 }
-
-function persist(key) {
+async function apiPost(path, body) {
+  const r = await fetch(CONFIG.API_BASE + path, {
+    method:'POST',headers:{'Content-Type':'application/json','X-API-Key':CONFIG.API_SECRET},
+    body:JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error('API POST ' + path + ' failed: ' + r.status);
+  return r.json();
+}
+async function loadFromAPI() {
   try {
-    if (key==='items') localStorage.setItem(SK.items, JSON.stringify(itemsData));
-    if (key==='evals') localStorage.setItem(SK.evals, JSON.stringify(evalData));
-    if (key==='hq')    localStorage.setItem(SK.hq,    JSON.stringify(hqData));
-  } catch(_) {}
+    const [items, hq, analytics, appeals] = await Promise.all([
+      apiGet('/api/items'), apiGet('/api/hq'),
+      apiGet('/api/analytics'), apiGet('/api/appeals'),
+    ]);
+    itemsData = items; hqData = hq; analyticsData = analytics; appealsData = appeals;
+  } catch(e) { console.warn('API load failed, using built-in data:', e); }
+}
+function persist() {}
+
+async function saveHQToBot() {
+  try { await apiPost('/api/hq', hqData); } catch(e) { console.warn('HQ save failed:', e); }
 }
 
 // ═══════════════════════════════════════
@@ -576,7 +589,6 @@ async function fetchDiscordUser(token) {
 }
 
 async function handleOAuth() {
-  loadFromStorage();
   const hash = new URLSearchParams(window.location.hash.slice(1));
   const token = hash.get('access_token');
   const retState = hash.get('state');
@@ -616,8 +628,12 @@ function showScreen(s) {
   document.getElementById('app').style.display = s==='app' ? 'block' : 'none';
 }
 
-function bootApp() {
+async function bootApp() {
   showScreen('app');
+  // Show loading state
+  document.getElementById('items-container').innerHTML = '<div style="padding:32px;color:var(--muted);text-align:center">Loading from bot...</div>';
+  await loadFromAPI();
+  // Re-render everything with live data
   const n = document.getElementById('sidebar-name');
   const a = document.getElementById('sidebar-avatar');
   n.textContent = currentUser.username;
@@ -691,7 +707,68 @@ let saveTimers = {};
 
 function debounceFieldSave(key, fn) {
   clearTimeout(saveTimers[key]);
-  saveTimers[key] = setTimeout(()=>{ fn(); persist('items'); }, 700);
+  saveTimers[key] = setTimeout(()=>{ fn(); updatePendingUI(); }, 700);
+}
+
+function trackChange(section, itemName, field, oldVal, newVal) {
+  if (!pendingItemChanges[section]) pendingItemChanges[section] = {};
+  if (!pendingItemChanges[section][itemName]) pendingItemChanges[section][itemName] = {};
+  pendingItemChanges[section][itemName][field] = { old: oldVal, new: newVal };
+}
+
+function updatePendingUI() {
+  const totalSections = Object.keys(pendingItemChanges).length;
+  const totalItems = Object.values(pendingItemChanges).reduce((s,sec)=>s+Object.keys(sec).length,0);
+  const btn = document.getElementById('save-all-btn');
+  const cnt = document.getElementById('pending-count');
+  if (totalItems > 0) {
+    btn.style.display = 'inline-flex';
+    cnt.style.display = 'inline';
+    cnt.textContent = `${totalItems} unsaved change${totalItems!==1?'s':''}`;
+  } else {
+    btn.style.display = 'none';
+    cnt.style.display = 'none';
+  }
+}
+
+function openSaveModal() {
+  const totalItems = Object.values(pendingItemChanges).reduce((s,sec)=>s+Object.keys(sec).length,0);
+  document.getElementById('save-modal-summary').textContent = `${totalItems} item${totalItems!==1?'s':''} with changes will be saved to the bot.`;
+  document.getElementById('save-send-type').value = 'none';
+  document.getElementById('save-msg-field').style.display = 'none';
+  document.getElementById('save-msg-input').value = '';
+  document.getElementById('save-modal').style.display = 'flex';
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const sel = document.getElementById('save-send-type');
+  if (sel) sel.addEventListener('change', ()=>{
+    document.getElementById('save-msg-field').style.display = sel.value==='ping' ? 'block' : 'none';
+  });
+});
+
+async function saveAllChanges() {
+  const sendType = document.getElementById('save-send-type').value;
+  const message = document.getElementById('save-msg-input').value.trim();
+  const btn = document.querySelector('#save-modal .btn-primary');
+  btn.textContent = 'Saving...'; btn.disabled = true;
+  try {
+    await apiPost('/api/items', {
+      items: itemsData,
+      changes_by_section: pendingItemChanges,
+      send_type: sendType,
+      discord_user_id: currentUser?.id,
+      message,
+    });
+    pendingItemChanges = {};
+    updatePendingUI();
+    closeModal('save-modal');
+    showToast('✅ Saved to bot' + (sendType!=='none' ? ' & announced!' : '!'));
+  } catch(e) {
+    showToast('❌ Save failed: ' + e.message);
+  } finally {
+    btn.textContent = 'Save to Bot'; btn.disabled = false;
+  }
 }
 
 function markSaved(el) {
@@ -814,10 +891,14 @@ function updateFlatItem(cat, name, field, val, el) {
 
 function updateItemField(cat, group, variant, field, val, el) {
   if (!itemsData[cat]?.[group]?.[variant]) return;
+  const oldVal = itemsData[cat][group][variant][field];
   itemsData[cat][group][variant][field] = val;
   markSaved(el);
-  persist('items');
-  showToast('Saved');
+  // Track the change for the save-all flow
+  const sectionKey = cat === 'Beequip' ? group : cat;
+  const itemKey = cat === 'Beequip' ? variant : (variant || group);
+  trackChange(sectionKey, itemKey, field, oldVal, val);
+  updatePendingUI();
 }
 
 // ═══════════════════════════════════════
@@ -931,18 +1012,18 @@ function renderNotes() {
 
 function updateNoteText(id, val) {
   const note = hqData.notes.find(n=>n.id===id);
-  if (note) { note.text = val; persist('hq'); showToast('Note saved'); }
+  if (note) { note.text = val; saveHQToBot(); showToast('Note saved'); }
 }
 
 function updateNoteAuthor(id, val) {
   const note = hqData.notes.find(n=>n.id===id);
-  if (note) { note.author_id = val; persist('hq'); showToast('Note saved'); }
+  if (note) { note.author_id = val; saveHQToBot(); showToast('Note saved'); }
 }
 
 function deleteNote(id) {
   confirm2('Delete this note?', ()=>{
     hqData.notes = hqData.notes.filter(n=>n.id!==id);
-    persist('hq'); renderNotes(); showToast('Note deleted');
+    saveHQToBot(); renderNotes(); showToast('Note deleted');
   });
 }
 
@@ -970,7 +1051,7 @@ function saveNote() {
     const newId = hqData.notes.length ? Math.max(...hqData.notes.map(n=>n.id))+1 : 1;
     hqData.notes.push({id:newId,text,author_id:author||currentUser?.id||0,timestamp:ts});
   }
-  persist('hq'); closeModal('note-modal'); renderNotes(); showToast('Note saved');
+  saveHQToBot(); closeModal('note-modal'); renderNotes(); showToast('Note saved');
 }
 
 // ═══════════════════════════════════════
@@ -1010,14 +1091,14 @@ function renderFlags() {
   }).join('');
 }
 
-function updateFlagItem(id,val){const f=hqData.flags.find(f=>f.id===id);if(f){f.item=val;persist('hq');showToast('Flag saved');}}
-function updateFlagAuthor(id,val){const f=hqData.flags.find(f=>f.id===id);if(f){f.author_id=val;persist('hq');showToast('Flag saved');}}
-function updateFlagType(id,val){const f=hqData.flags.find(f=>f.id===id);if(f){f.needs=val;persist('hq');renderFlags();showToast('Flag saved');}}
+function updateFlagItem(id,val){const f=hqData.flags.find(f=>f.id===id);if(f){f.item=val;saveHQToBot();showToast('Flag saved');}}
+function updateFlagAuthor(id,val){const f=hqData.flags.find(f=>f.id===id);if(f){f.author_id=val;saveHQToBot();showToast('Flag saved');}}
+function updateFlagType(id,val){const f=hqData.flags.find(f=>f.id===id);if(f){f.needs=val;saveHQToBot();renderFlags();showToast('Flag saved');}}
 
 function deleteFlag(id){
   confirm2('Delete this flag?',()=>{
     hqData.flags=hqData.flags.filter(f=>f.id!==id);
-    persist('hq');renderFlags();showToast('Flag deleted');
+    saveHQToBot();renderFlags();showToast('Flag deleted');
   });
 }
 
@@ -1037,7 +1118,7 @@ function saveFlag(){
   if(!item){showToast('Item name required','error');return;}
   const newId=hqData.flags.length?Math.max(...hqData.flags.map(f=>f.id))+1:1;
   hqData.flags.push({id:newId,item,needs,author_id:author||currentUser?.id||0,timestamp:Math.floor(Date.now()/1000)});
-  persist('hq');closeModal('flag-modal');renderFlags();showToast('Flag created');
+  saveHQToBot();closeModal('flag-modal');renderFlags();showToast('Flag created');
 }
 
 // ═══════════════════════════════════════
@@ -1117,6 +1198,29 @@ function fmtTs(ts){return new Date(ts*1000).toLocaleString();}
 </script>
 
 <!-- ADD ACCESS MODAL -->
+<div class="modal-overlay" id="save-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('save-modal')">✕</button>
+    <div class="modal-title">Save Changes to Bot</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px" id="save-modal-summary"></div>
+    <div class="form-field">
+      <label class="form-label">Announcement Type</label>
+      <select class="form-input" id="save-send-type">
+        <option value="none">Save only (no announcement)</option>
+        <option value="send">Send announcement to list updates channel</option>
+        <option value="ping">Send announcement + ping role</option>
+      </select>
+    </div>
+    <div class="form-field" id="save-msg-field" style="display:none">
+      <label class="form-label">Ping Message (optional)</label>
+      <input class="form-input" id="save-msg-input" placeholder="e.g. New values updated!" type="text">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('save-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAllChanges()">Save to Bot</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="access-modal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('access-modal')">✕</button>
